@@ -1,0 +1,4 @@
+Unmodified XMRig 6.26.0 binaries: https://github.com/xmrig/xmrig/releases/tag/v6.26.0
+Corresponding source: https://github.com/xmrig/xmrig/archive/refs/tags/v6.26.0.tar.gz
+License: GNU GPL v3. See LICENSE-XMRig.txt.
+Node.js: https://nodejs.org/dist/v22.23.3/ ; see runtime/LICENSE-node.txt.

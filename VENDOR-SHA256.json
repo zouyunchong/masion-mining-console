@@ -1,0 +1,32 @@
+[
+  {
+    "name": "xmrig-6.26.0-macos-arm64.tar.gz",
+    "url": "https://github.com/xmrig/xmrig/releases/download/v6.26.0/xmrig-6.26.0-macos-arm64.tar.gz",
+    "sha": "6ae4eb4216e99a201ae9a3d2c3a7c275207c5165cfc25da1f3d735d6c4829c18"
+  },
+  {
+    "name": "xmrig-6.26.0-macos-x64.tar.gz",
+    "url": "https://github.com/xmrig/xmrig/releases/download/v6.26.0/xmrig-6.26.0-macos-x64.tar.gz",
+    "sha": "1da924b358c0089e361540c4a9e6f8b09538b29efeafa2379590e0f6db358ff4"
+  },
+  {
+    "name": "xmrig-6.26.0-windows-x64.zip",
+    "url": "https://github.com/xmrig/xmrig/releases/download/v6.26.0/xmrig-6.26.0-windows-x64.zip",
+    "sha": "bba8097cb37d9b458a1cb1137876b27cde6740d17fe4ccbc086ba07d87d9e147"
+  },
+  {
+    "name": "node-v22.23.3-darwin-arm64.tar.gz",
+    "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-darwin-arm64.tar.gz",
+    "sha": "23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53"
+  },
+  {
+    "name": "node-v22.23.3-darwin-x64.tar.gz",
+    "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-darwin-x64.tar.gz",
+    "sha": "8a677b0219178efd6eb0e475457c4afb452b521a92f6e67845a73bd85727f2a8"
+  },
+  {
+    "name": "node-v22.23.3-win-x64.zip",
+    "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-win-x64.zip",
+    "sha": "2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71"
+  }
+]

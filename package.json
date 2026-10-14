@@ -1,0 +1,14 @@
+{
+  "name": "masion-mining-console",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MASION CPU mining console and local assistant for Mac and Windows",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test.mjs",
+    "build": "node scripts/build-web.mjs",
+    "build:uninstall": "node scripts/build-uninstall.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

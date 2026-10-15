@@ -1,6 +1,6 @@
 {
   "name": "masion-mining-console",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "MASION CPU mining console and local assistant for Mac and Windows",

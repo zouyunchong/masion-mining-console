@@ -140,8 +140,9 @@ async function main(){
     let body='';for await(const b of req){body+=b;if(body.length>1024)throw Error('请求过大')}
     return reply(200,await auth.pair(JSON.parse(body).code));
    }
-   if(url.pathname==='/api/health'&&req.method==='GET')return reply(200,{product:'MasionMiningHelper',version:'1.1',pairingRequired:fromSite});
+   if(url.pathname==='/api/health'&&req.method==='GET')return reply(200,{product:'MasionMiningHelper',version:'1.2',pairingRequired:fromSite});
    if(fromSite&&!auth.authorized(req.headers['x-device-token']))return reply(401,{error:'请先与当前电脑的助手配对'});
+   if(req.method==='GET'&&url.pathname==='/api/rewards')return reply(200,await account.rewards({from:url.searchParams.get('from'),to:url.searchParams.get('to'),timeZone:url.searchParams.get('timeZone')}));
    if(req.method==='GET'&&url.pathname==='/api/status')return reply(200,{csrf,state,pid,uptime:guardian&&started?Math.floor((Date.now()-started)/1000):0,hashrate:snapshot?.hashrate?.total||[null,null,null],accepted:snapshot?.results?.shares_good??null,rejected:snapshot?.results?Math.max(0,snapshot.results.shares_total-snapshot.results.shares_good):null,sampleAt,resources,history,logs,lastExit,config:{...config,password:undefined,passwordSet:!!config.password},device:deviceInfo(deviceId),account:account.get()});
    if(req.method==='POST'&&['/api/start','/api/stop','/api/restart','/api/config','/api/account','/api/account/disconnect'].includes(url.pathname)){
     if(req.headers['x-csrf-token']!==csrf)return reply(403,{error:'会话验证失败，请刷新页面'});

@@ -96,7 +96,7 @@ test('local reset stops the owned miner, clears saved data, and revokes old acce
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'masion-reset-'));let child;
  try{
   const fixture=path.join(dir,'app'),data=path.join(dir,'data');await fs.mkdir(fixture);await fs.mkdir(data);
-  for(const name of ['server.mjs','guardian.mjs','account.mjs','device-auth.mjs','pool-network.mjs'])await fs.copyFile(new URL(name,import.meta.url),path.join(fixture,name));
+  for(const name of ['server.mjs','guardian.mjs','account.mjs','rewards.mjs','device-auth.mjs','pool-network.mjs'])await fs.copyFile(new URL(name,import.meta.url),path.join(fixture,name));
   // Avoid touching or detecting the user's real miner; this fixture owns only a dummy process.
   await fs.writeFile(path.join(fixture,'platform.mjs'),"export async function otherMiners(){return []}export async function minerResources(){return {cpu:0,rss:0}}export function deviceInfo(id){return {id,name:'fixture',cores:4,memory:1,platform:'test'}}");
   const fake=path.join(dir,'fake-miner');await fs.writeFile(fake,`#!${process.execPath}\nsetInterval(()=>{},1000);\n`);await fs.chmod(fake,0o700);
@@ -107,6 +107,10 @@ test('local reset stops the owned miner, clears saved data, and revokes old acce
   for(let i=0;i<80;i++){try{s=await fetch(url+'/api/status').then(r=>r.json());break}catch{await new Promise(r=>setTimeout(r,50))}}assert.ok(s);
   const post=(route,body={},headers={})=>fetch(url+route,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':s.csrf,...headers},body:JSON.stringify(body)});
   const code=await fetch(url+'/api/pair-code').then(r=>r.json());const token=(await post('/api/pair',{code:code.code},{Origin:'https://masion.xyz'}).then(r=>r.json())).token;assert.ok(token);
+  const rewardUrl=url+'/api/rewards?from=2026-01-01&to=2026-01-02&timeZone=Asia%2FShanghai';
+  assert.equal((await fetch(rewardUrl,{headers:{Origin:'https://masion.xyz'}})).status,401);
+  const noAccount=await fetch(rewardUrl,{headers:{Origin:'https://masion.xyz','X-Device-Token':token}});
+  assert.equal(noAccount.status,400);assert.match((await noAccount.json()).error,/连接只读/);
   assert.equal((await post('/api/start')).status,200);
   for(let i=0;i<80;i++){s=await fetch(url+'/api/status').then(r=>r.json());if(s.pid)break;await new Promise(r=>setTimeout(r,50))}assert.ok(s.pid);const minerPid=s.pid,previousDevice=s.device.id,previousCsrf=s.csrf;
   await fs.writeFile(path.join(data,'unmineable.json'),'fixture-private-key');await fs.writeFile(path.join(data,'settings.tmp'),'fixture-password');
@@ -125,4 +129,89 @@ test('local reset stops the owned miner, clears saved data, and revokes old acce
   if(child&&child.exitCode===null){const exited=once(child,'exit');child.kill('SIGTERM');await exited}
   await fs.rm(dir,{recursive:true,force:true});
  }
+});
+
+import {collectRewards,dateRange,units} from './rewards.mjs';
+const reportNow=Date.parse('2026-10-15T12:00:00Z');
+const reward=(uuid,time,amount,coin='LTC',event='reward')=>({uuid,timestamp:Date.parse(time),event,data:{coin,coin_canonical:coin,amount}});
+const rewardPage=(list,has_next=false)=>({success:true,data:{list,has_next}});
+
+test('live reward events sum LTC allocations inside data.coins once per event',async()=>{
+ const event={uuid:'multi-coin',timestamp:Date.parse('2026-10-14T00:00:00Z'),event:'reward',data:{coins:[
+  {coin:'BTC',coin_canonical:'BTC',amount:'999'},
+  {coin:'LTC',coin_canonical:'LTC',amount:'0.12345678'},
+  {coin:'LTC',coin_canonical:'LTC',amount:'0.000000000000000001'}
+ ],time_start:Date.parse('2026-10-13T20:00:00Z'),time_end:Date.parse('2026-10-14T00:00:00Z')}};
+ const other={...event,uuid:'other',data:{coins:[{coin:'DOGE',amount:'999'}]}};
+ const report=await collectRewards(async page=>page===1?rewardPage([event],true):rewardPage([event,other]),selection,reportNow);
+ assert.equal(report.total,'0.123456780000000001');assert.equal(report.count,1);
+ assert.equal(report.daily.find(row=>row.date==='2026-10-14').amount,report.total);
+ for(const coins of [null,{},[],[{amount:'1'}],[{coin:'LTC',amount:'invalid'}]]){
+  await assert.rejects(collectRewards(async()=>rewardPage([{...event,data:{coins}}]),selection,reportNow),/矿池奖励|奖励金额/);
+ }
+});
+const selection={from:'2026-10-13',to:'2026-10-14',timeZone:'Asia/Shanghai'};
+test('rewards sum precise amounts across pages and inclusive local-date boundaries',async()=>{
+ const boundary=reward('boundary','2026-10-13T16:00:00Z','0.20000000');
+ const pages=[rewardPage([
+  reward('outside-end','2026-10-14T16:00:00Z','999'),
+  reward('last-ms','2026-10-14T15:59:59.999Z','0.000000000000000001'),
+  reward('withdrawal','2026-10-14T12:00:00Z','500','LTC','payout'),
+  reward('other-coin','2026-10-14T10:00:00Z','500','BTC'),boundary
+ ],true),rewardPage([
+  boundary,reward('start','2026-10-12T16:00:00Z','0.10000000'),
+  reward('outside-start','2026-10-12T15:59:59.999Z','999')
+ ],true)];let requests=0;
+ const report=await collectRewards(async page=>{requests++;return pages[page-1]},selection,reportNow);
+ assert.equal(requests,2);assert.equal(report.total,'0.300000000000000001');assert.equal(report.count,3);assert.equal(report.days,2);
+ assert.deepEqual(report.daily,[{date:'2026-10-13',amount:'0.10000000',count:1},{date:'2026-10-14',amount:'0.200000000000000001',count:2}]);
+ assert.equal(report.average,'0.15000000');
+});
+test('empty reward history is a confirmed zero, including all zero days',async()=>{
+ const report=await collectRewards(async()=>rewardPage([]),selection,reportNow);
+ assert.equal(report.total,'0.00000000');assert.equal(report.average,'0.00000000');assert.equal(report.count,0);assert.equal(report.daily.length,2);
+});
+test('calendar validation handles leap days, reversed, future and oversized ranges',()=>{
+ for(const change of [{from:'2026-02-29'},{from:'2026-10-15'},{from:'bad'},{to:'2026-10-16'},{from:'2020-01-01'},{timeZone:'invalid-zone'},{timeZone:null}])assert.throws(()=>dateRange({...selection,...change},reportNow));
+ assert.equal(dateRange({from:'2024-02-29',to:'2024-03-01',timeZone:'UTC'},reportNow).days,2);
+ for(const value of ['-1','NaN','1e-8','0.0000000000000000001',1,null])assert.throws(()=>units(value));
+});
+test('day grouping observes DST in the selected time zone',async()=>{
+ const report=await collectRewards(async()=>rewardPage([
+  reward('after','2026-03-09T04:00:00Z','9'),
+  reward('end','2026-03-09T03:59:59.999Z','0.2'),
+  reward('start','2026-03-08T05:00:00Z','0.1'),
+  reward('before','2026-03-08T04:59:59.999Z','9')
+ ]),{from:'2026-03-08',to:'2026-03-08',timeZone:'America/New_York'},reportNow);
+ assert.equal(report.total,'0.30000000');assert.equal(report.days,1);assert.equal(report.count,2);
+});
+test('failed, malformed or incomplete pages never become partial totals',async()=>{
+ for(const payload of [{success:false},rewardPage([],true),{success:true,data:{list:[]}},rewardPage([reward('bad','invalid','0.1')]),rewardPage([reward('bad','2026-10-14T00:00:00Z','garbage')])]){
+  await assert.rejects(collectRewards(async()=>payload,selection,reportNow));
+ }
+ await assert.rejects(collectRewards(async page=>{if(page===2)throw Error('offline');return rewardPage([reward('one','2026-10-14T00:00:00Z','1')],true)},selection,reportNow),/offline/);
+ await assert.rejects(collectRewards(async page=>rewardPage([reward(String(page),'2026-10-14T00:00:00Z','1')],true),selection,reportNow),/尚未读取完整/);
+ await assert.rejects(collectRewards(async()=>rewardPage([reward('a','2026-10-13T00:00:00Z','1'),reward('b','2026-10-14T00:00:00Z','1')]),selection,reportNow),/排序异常/);
+});
+test('reward requests sign the exact query, cache only completed results and isolate accounts',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'masion-rewards-'));const original=globalThis.fetch;
+ let calls=0,release;
+ try{
+  globalThis.fetch=async(url,options)=>{
+   if(url.endsWith('/stats'))return new Response(JSON.stringify({success:true,data:{coin:'LTC',balance:'0.1',balance_mining:'0.1',paid:'0'}}));
+   calls++;const u=new URL(url),h=options.headers;
+   assert.equal(u.pathname,'/v1/dashboard/events');assert.equal(u.search,'?page=1&type=reward&dir=desc');
+   assert.equal(h['x-user-api-signature'],sign(u.pathname,h['x-user-api-timestamp'],'fixture-secret',u.search.slice(1)));
+   return new Response(JSON.stringify(rewardPage([reward('one','2026-10-14T00:00:00Z','0.12345678')])));
+  };
+  const account=createAccount(dir);await assert.rejects(account.rewards(selection),/先连接/);
+  await account.connect({key:'fixture-key',secret:'fixture-secret'});
+  const first=await account.rewards(selection);assert.equal(first.total,'0.12345678');await account.rewards(selection);assert.equal(calls,1);
+  assert.ok(!JSON.stringify(first).includes('fixture-secret'));
+  await account.disconnect();await assert.rejects(account.rewards(selection),/先连接/);
+  await account.connect({key:'second-key',secret:'fixture-secret'});await account.rewards(selection);assert.equal(calls,2);
+  globalThis.fetch=()=>new Promise(resolve=>{release=()=>resolve(new Response(JSON.stringify(rewardPage([]))))});
+  const pending=account.rewards({...selection,from:'2026-10-12'});
+  await account.disconnect();release();await assert.rejects(pending,/账户已变更/);
+ }finally{globalThis.fetch=original;await fs.rm(dir,{recursive:true,force:true})}
 });
